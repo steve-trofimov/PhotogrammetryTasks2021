@@ -3,6 +3,7 @@
 
 #include <libutils/bbox2.h>
 #include <iostream>
+#include <map>
 
 /*
  * imgs - список картинок
@@ -10,6 +11,7 @@
  *          этот список образует дерево, корень дерева (картинка, которая ни к кому не приклеивается, приклеиваются только к ней), в данном массиве имеет значение -1
  * homography_builder - функтор, возвращающий гомографию по паре картинок
  * */
+
 cv::Mat phg::stitchPanorama(const std::vector<cv::Mat> &imgs,
                             const std::vector<int> &parent,
                             std::function<cv::Mat(const cv::Mat &, const cv::Mat &)> &homography_builder)
@@ -20,10 +22,24 @@ cv::Mat phg::stitchPanorama(const std::vector<cv::Mat> &imgs,
 
     // вектор гомографий, для каждой картинки описывает преобразование до корня
     std::vector<cv::Mat> Hs(n_images);
+
     {
-        // здесь надо посчитать вектор Hs
-        // при этом можно обойтись n_images - 1 вызовами функтора homography_builder
-        throw std::runtime_error("not implemented yet");
+        std::map<std::pair<int, int>, cv::Mat> corn;
+        for (int i = 0; i < n_images; i++) {
+            if (parent[i] != -1)
+                corn[{i, parent[i]}] = homography_builder(imgs[i], imgs[parent[i]]);
+        }
+
+        // проходим ввер до первой фотографии, делая композицию
+        for (int i = 0; i < n_images; i++) {
+            int par = i;
+            cv::Mat H = cv::Mat::eye(3, 3, CV_64FC1);
+            while (parent[par] != -1) {
+                H = corn.at({par, parent[par]}) * H;
+                par = parent[par];
+            }
+            Hs[i] = H;
+        }
     }
 
     bbox2<double, cv::Point2d> bbox;
