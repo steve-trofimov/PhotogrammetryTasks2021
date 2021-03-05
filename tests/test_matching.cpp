@@ -18,7 +18,7 @@
 #include "utils/test_utils.h"
 
 #define ENABLE_MY_DESCRIPTOR 0
-#define ENABLE_MY_MATCHING 1
+#define ENABLE_MY_MATCHING 0
 #define ENABLE_GPU_BRUTEFORCE_MATCHER 0
 
 #if ENABLE_MY_MATCHING

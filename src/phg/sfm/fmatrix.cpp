@@ -25,7 +25,7 @@ namespace {
     // (см. Hartley & Zisserman p.279)
     cv::Matx33d estimateFMatrixDLT(const cv::Vec2d *m0, const cv::Vec2d *m1, int count)
     {
-        // TODO --
+        // TODO -- done
         int a_rows = count;
         int a_cols = 9;
 
@@ -41,11 +41,11 @@ namespace {
 
 //            std::cout << "(" << x0 << ", " << y0 << "), (" << x1 << ", " << y1 << ")" << std::endl;
 
-            A.row(i_pair) << x0 * x1, x1 * y0, x1, y1 * x0, y1 * y0, y1, x0, y1, 1;
+            A.row(i_pair) << x0 * x1, x1 * y0, x1, y1 * x0, y1 * y0, y1, x0, y0, 1;
         }
 
         Eigen::JacobiSVD<Eigen::MatrixXd> svda(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
-        Eigen::VectorXd null_space = svda.matrixV().col(8);
+        Eigen::VectorXd null_space = svda.matrixV().col(svda.matrixV().cols() - 1);
 
         Eigen::MatrixXd F(3, 3);
         F.row(0) << null_space[0], null_space[1], null_space[2];
@@ -54,8 +54,8 @@ namespace {
 
 //             Поправить F так, чтобы соблюдалось свойство фундаментальной матрицы (последнее сингулярное значение = 0)
         Eigen::JacobiSVD<Eigen::MatrixXd> svdf(F, Eigen::ComputeFullU | Eigen::ComputeFullV);
-        Eigen::DiagonalMatrix<double, Eigen::Dynamic> S = svdf.singularValues().asDiagonal();
-        S.diagonal().z() = 0;
+        Eigen::Matrix3d S = svdf.singularValues().asDiagonal();
+        S(2,2) = 0;
 
         F = svdf.matrixU() * S * svdf.matrixV().transpose();
 
@@ -69,18 +69,18 @@ namespace {
     // (см. Hartley & Zisserman p.107 Why is normalization essential?)
     cv::Matx33d getNormalizeTransform(const std::vector<cv::Vec2d> &m)
     {
-        double meanX, meanY;
+        double meanX = 0, meanY = 0;
         for (auto iter : m) {
-            meanX += iter.val[0];
-            meanY += iter.val[0];
+            meanX += iter(0);
+            meanY += iter(1);
         }
         meanX /= m.size();
         meanY /= m.size();
 
         double dist = 0;
         for (auto iter : m)
-            dist += std::sqrt((iter.val[0] - meanX) * (iter.val[0] - meanX) +
-                              (iter.val[1] - meanY) * (iter.val[1] - meanY));
+            dist += std::sqrt((iter(0) - meanX) * (iter(0) - meanX) +
+                              (iter(1) - meanY) * (iter(1) - meanY));
 
         return {1, 0, -meanX,
                 0, 1, -meanY,
@@ -124,7 +124,13 @@ namespace {
         // https://en.wikipedia.org/wiki/Random_sample_consensus#Parameters
         // будет отличаться от случая с гомографией
         const int n_samples = 8;
-        const int n_trials = static_cast<int>(log(1 - 0.99) / log(1 - pow(0.5, n_samples)));
+
+        double q = 1;
+        for (int i = 0; i < n_samples; i ++)
+            q *= (0.4 * m0.size() - i) / double(m0.size() - i);
+
+
+        const int n_trials = log(q) / log(1 - q);
 
         uint64_t seed = 1;
 
@@ -160,7 +166,7 @@ namespace {
                 best_F = F;
 
                 std::cout << "estimateFMatrixRANSAC : support: " << best_support << "/" << n_matches << std::endl;
-                infoF(F);
+//                infoF(F);
 
                 if (best_support == n_matches) {
                     break;

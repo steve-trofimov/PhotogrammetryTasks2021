@@ -4,8 +4,6 @@
 #include "fmatrix.h"
 #include "triangulation.h"
 
-#include <opencv2/core/eigen.hpp>
-
 #include <Eigen/SVD>
 #include <Eigen/Dense>
 #include <iostream>
@@ -23,7 +21,7 @@ namespace {
 
         // TODO -- done
         double elemS = svd.singularValues().sum() / 2.;
-        Eigen::DiagonalMatrix<double, 3> S(1, 1, 0);
+        Eigen::DiagonalMatrix<double, 3> S(elemS, elemS, 0);
         E = svd.matrixU() * S * svd.matrixV().transpose();
 
         copy(E, Ecv);
@@ -62,7 +60,7 @@ namespace {
         return result;
     }
 
-    double getDepth(const vector2d &m0, const vector2d &m1, const phg::Calibration &calib0, const phg::Calibration &calib1, const matrix34d &P0, const matrix34d &P1)
+    bool depthTest(const vector2d &m0, const vector2d &m1, const phg::Calibration &calib0, const phg::Calibration &calib1, const matrix34d &P0, const matrix34d &P1)
     {
         vector3d p0 = calib0.unproject(m0);
         vector3d p1 = calib1.unproject(m1);
@@ -75,8 +73,7 @@ namespace {
             X /= X[3];
         }
 
-        // Точно ли X[2] ?
-        return X[2];
+        return p0.dot(P0 * X) > 0 && p1.dot(P1 * X) > 0;
     }
 }
 
@@ -120,14 +117,14 @@ void phg::decomposeEMatrix(cv::Matx34d &P0, cv::Matx34d &P1, const cv::Matx33d &
          1., 0., 0.,
          0., 0., 1.;
 
-    mat R0 = U * H * V.transpose();
-    mat R1 = U * H.transpose() * V.transpose();
+    mat R0 = U * H.transpose() * V.transpose();
+    mat R1 = U * H * V.transpose();
 
     std::cout << "R0:\n" << R0 << std::endl;
     std::cout << "R1:\n" << R1 << std::endl;
 
-    vec t0 = U.transpose().col(2);
-    vec t1 = -U.transpose().col(2);
+    vec t0 = U.col(2);
+    vec t1 = - U.col(2);
 
     std::cout << "t0:\n" << t0 << std::endl;
 
@@ -146,7 +143,7 @@ void phg::decomposeEMatrix(cv::Matx34d &P0, cv::Matx34d &P1, const cv::Matx33d &
     for (int i = 0; i < 4; ++i) {
         int count = 0;
         for (int j = 0; j < (int) m0.size(); ++j) {
-            if (getDepth(m0[j], m1[j], calib0, calib1, P0, P1) > 0) {
+            if (depthTest(m0[j], m1[j], calib0, calib1, P0, P1s[i])) {
                 ++count;
             }
         }
