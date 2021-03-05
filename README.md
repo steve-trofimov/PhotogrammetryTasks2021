@@ -4,3 +4,4 @@
 
  - [Задание 1](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task01): Локальные ключевые точки SIFT (детектор и дескриптор).
  - [Задание 2](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task02): Сопоставление ключевых точек и подсчет гомографии.
+ - [Задание 3](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task03): SFM. Оценка взаимной ориентации и положения камер, построение облака точек.
