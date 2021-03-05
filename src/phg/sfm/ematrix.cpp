@@ -18,8 +18,8 @@ namespace {
         copy(Ecv, E);
 
         Eigen::JacobiSVD<Eigen::MatrixXd> svd(E, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    // TODO -- done
 
-        // TODO -- done
         double elemS = svd.singularValues().sum() / 2.;
         Eigen::DiagonalMatrix<double, 3> S(elemS, elemS, 0);
         E = svd.matrixU() * S * svd.matrixV().transpose();
@@ -114,8 +114,8 @@ void phg::decomposeEMatrix(cv::Matx34d &P0, cv::Matx34d &P1, const cv::Matx33d &
 
     Eigen::Matrix3d H;
     H << 0., -1., 0.,
-         1., 0., 0.,
-         0., 0., 1.;
+            1., 0., 0.,
+            0., 0., 1.;
 
     mat R0 = U * H.transpose() * V.transpose();
     mat R1 = U * H * V.transpose();
