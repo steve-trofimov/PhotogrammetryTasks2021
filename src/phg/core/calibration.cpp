@@ -1,4 +1,4 @@
-#include <phg/sfm/defines.h>
+v#include <phg/sfm/defines.h>
 #include "calibration.h"
 
 
@@ -35,7 +35,15 @@ cv::Vec3d phg::Calibration::project(const cv::Vec3d &point) const
     double x = f_ * point[0] / point[2];
     double y = f_ * point[1] / point[2];
 
-    // TODO 11: добавьте учет радиальных искажений (k1_, k2_)
+    // TODO 11 -- done: добавьте учет радиальных искажений (k1_, k2_)
+
+    double r = std::sqrt((x - width_ * 0.5) * (x - width_ * 0.5) +
+                         (y - height_ * 0.5) * (y - height_ * 0.5));
+
+    x *= 1 + k1_ * r * r + k2_ * r * r * r * r;
+    y *= 1 + k1_ * r * r + k2_ * r * r * r * r;
+
+    // TODO -- Проверить, правильно ли сделано вычисление r
 
     x += cx_ + width_ * 0.5;
     y += cy_ + height_ * 0.5;
