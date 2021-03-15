@@ -267,7 +267,7 @@ public:
         // TODO 5 -- done посчитайте единственную невязку - расстояние от нашей точки-замера до текущего состояния прямой (для извлечения корня, помня про T=Jet, нужно использовать ceres::sqrt):
         // обратите внимание что расстояние лучше оставить знаковым, т.к. тогда эта невязка будет хорошо дифференцироваться при расстоянии около нуля
         T norm = ceres::sqrt(line[0] * line[0] + line[1] * line[1]);
-        T distance = line[0] * (T)samplePoint[0] + line[1] * (T)samplePoint[1] + line[2];
+        T distance = line[0] * samplePoint[0] + line[1] * samplePoint[1] + line[2];
         residual[0] = distance / norm;
         return true;
     }
@@ -390,7 +390,6 @@ void evaluateLineFitting(double sigma, double &fitted_inliers_fraction, double &
     new_ideal_line[1] = ideal_line[1] / ideal_line[0];
     new_ideal_line[2] = ideal_line[2] / ideal_line[0];
 
-
     if (postProcessing) {
         for (int d = 0; d < 3; d++) {
             line_params[1] /= line_params[0];
@@ -401,7 +400,8 @@ void evaluateLineFitting(double sigma, double &fitted_inliers_fraction, double &
 
 
     for (int d = 0; d < 3; ++d) {
-//        ASSERT_NEAR(line_params[d], new_ideal_line[d], threshold * 10);
+        ASSERT_NEAR(line_params[d], new_ideal_line[d], threshold * 10); // Почему-то выбранный трешхолд не дает пройти тесты(для свободного коэффициента),
+                                                                                          // искуствено увеличил
         // TODO 7 -- done расскоментируйте сверку найденной прямой и эталонной
         // Почему-то проблемы со свободным членом - не проходит пороговое значение.
         // почему они расходятся? как это можно решить? придумайте хотя бы два способа:
@@ -418,14 +418,14 @@ void evaluateLineFitting(double sigma, double &fitted_inliers_fraction, double &
     // Оцениваем качество идеальной прямой
     double inliers_fraction, mse;
     evaluateLine(points, ideal_line, sigma, inliers_fraction, mse);
-    ASSERT_GT(inliers_fraction, 0.99); // TODO 8 раскоментируйте, почему эта проверка падает? как поправить?
+    ASSERT_GT(inliers_fraction, 0.99 * (1 - outliers_fraction)); // TODO 8 раскоментируйте, почему эта проверка падает? как поправить?
     ASSERT_LT(mse, 1.1 * sigma * sigma); // TODO 9 раскомментируйте, почему проверка падает? на каких тестах она падает, на каких проходит? попробуйте отладить рассчет mse_inliers_distance в evaluateLine
 
     // Оцениваем качество найденной прямой
     evaluateLine(points, line_params, sigma, inliers_fraction, mse);
     if (outliers_fraction == 0 || use_huber) {
         // TODO 10 раскоментируйте обе проверки, почему они падают? в каких тестах? поправьте (в т.ч. подобно тому как было с ослаблением порога выше)
-        ASSERT_GT(inliers_fraction, 0.99);
+        ASSERT_GT(inliers_fraction, 0.99 * (1. - outliers_fraction));
         ASSERT_LT(mse, 1.1 * sigma * sigma);
     }
 }
@@ -437,14 +437,13 @@ void evaluateLine(const std::vector<double[2]> &points, const double* line,
     mse_inliers_distance = 0.0; // mean square error
     for (size_t i = 0; i < n; ++i) {
         double dist = calcDistanceToLine2D(points[i][0], points[i][1], line);
-        if (dist <= 3 * sigma) {
+        if (std::abs(dist <= 3 * sigma)) {
             ++inliers;
             mse_inliers_distance += dist * dist;
         }
     }
     fitted_inliers_fraction = 1.0 * inliers / n;
     mse_inliers_distance /= inliers;
-//    mse_inliers_distance = std::sqrt(mse_inliers_distance);
 }
 
 TEST (CeresSolver, FitLineNoise) {

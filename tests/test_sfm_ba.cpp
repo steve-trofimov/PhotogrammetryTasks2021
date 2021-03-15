@@ -21,9 +21,9 @@
 #include <ceres/rotation.h>
 #include <ceres/ceres.h>
 
-// TODO включите Bundle Adjustment (но из любопытства посмотрите как ведет себя реконструкция без BA например для saharov32 без BA)
-#define ENABLE_BA                             0
-// TODO и раскомментируйте вызов runBA ниже
+// TODO -- done включите Bundle Adjustment (но из любопытства посмотрите как ведет себя реконструкция без BA например для saharov32 без BA)
+#define ENABLE_BA                             1
+// TODO -- done и раскомментируйте вызов runBA ниже
 
 // TODO когда заработает при малом количестве фотографий - увеличьте это ограничение до 100 чтобы попробовать обработать все фотографии (если же успешно будут отрабаывать только N фотографий - отправьте PR выставив здесь это N)
 #define NIMGS_LIMIT                           10 // сколько фотографий обрабатывать (можно выставить меньше чтобы ускорить экспериментирование, или в случае если весь датасет не выравнивается)
@@ -53,7 +53,8 @@
 //#define DATASET_DOWNSCALE            2 // для ускорения SIFT
 //#define DATASET_F                    (2761.5 / DATASET_DOWNSCALE) // see herzjesu25/K.txt
 // TODO почему фокальная длина меняется от того что мы уменьшаем картинку? почему именно в такой пропорции? может надо домножать? или делить на downscale^2 ?
-
+// Как я понял, это происходит из-за того, что считаем, что наша проекция находится на расстоянии фокальной длины, при уменьшении картинки, плоскость меняется
+// по подобию треугольников
 // но temple47 - не вышло, я не разобрался в чем с ним проблема, может быть слишком мало точек, может критерии фильтрации выкидышей для него слишком строги
 //#define DATASET_DIR                  "temple47"
 //#define DATASET_DOWNSCALE            1
@@ -285,7 +286,7 @@ TEST (SFM, ReconstructNViews) {
         generateTiePointsCloud(tie_points, tracks, keypoints, imgs, aligned, cameras, ncameras, tie_points_and_cameras, tie_points_colors);
         phg::exportPointCloud(tie_points_and_cameras, std::string("data/debug/test_sfm_ba/") + DATASET_DIR + "/point_cloud_" + to_string(ncameras) + "_cameras.ply", tie_points_colors);
 
-//        runBA(tie_points, tracks, keypoints, cameras, ncameras, calib);
+        runBA(tie_points, tracks, keypoints, cameras, ncameras, calib);
         generateTiePointsCloud(tie_points, tracks, keypoints, imgs, aligned, cameras, ncameras, tie_points_and_cameras, tie_points_colors);
         phg::exportPointCloud(tie_points_and_cameras, std::string("data/debug/test_sfm_ba/") + DATASET_DIR + "/point_cloud_" + to_string(ncameras) + "_cameras_ba.ply", tie_points_colors);
     }
@@ -389,8 +390,13 @@ public:
 
         // Проецируем точку на фокальную плоскость матрицы (т.е. плоскость Z=фокальная длина), тем самым переводя в пиксели
 
+
 #if ENABLE_INSTRINSICS_K1_K2
         // k1, k2 - коэффициенты радиального искажения (radial distortion)
+//        double r = std::sqrt(x * x + y * y);
+//
+//        x *= 1 + k1_ * r * r + k2_ * r * r * r * r;
+//        y *= 1 + k1_ * r * r + k2_ * r * r * r * r;
 #endif
 
         // Из координат когда точка (0, 0) - центр оптической оси
@@ -398,6 +404,9 @@ public:
         // cx, cy - координаты центра оптической оси (обычно это центр картинки, но часто он чуть смещен)
 
         // Теперь по спроецированным координатам не забудьте посчитать невязку репроекции
+
+//        x += cx_ + width_ * 0.5;
+//        y += cy_ + height_ * 0.5;
 
         return true;
         // TODO сверьте эту функцию с вашей реализацией проекции в src/phg/core/calibration.cpp (они должны совпадать)
