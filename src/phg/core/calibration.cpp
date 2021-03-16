@@ -1,4 +1,4 @@
-v#include <phg/sfm/defines.h>
+#include <phg/sfm/defines.h>
 #include "calibration.h"
 
 
@@ -43,8 +43,6 @@ cv::Vec3d phg::Calibration::project(const cv::Vec3d &point) const
     x *= 1 + k1_ * r * r + k2_ * r * r * r * r;
     y *= 1 + k1_ * r * r + k2_ * r * r * r * r;
 
-    // TODO -- Проверить, правильно ли сделано вычисление r
-
     x += cx_ + width_ * 0.5;
     y += cy_ + height_ * 0.5;
 
@@ -56,7 +54,11 @@ cv::Vec3d phg::Calibration::unproject(const cv::Vec2d &pixel) const
     double x = pixel[0] - cx_ - width_ * 0.5;
     double y = pixel[1] - cy_ - height_ * 0.5;
 
-    // TODO 12: добавьте учет радиальных искажений, когда реализуете - подумайте: почему строго говоря это - не симметричная формула формуле из project? (но лишь приближение)
+    // TODO 12 - done: добавьте учет радиальных искажений, когда реализуете - подумайте: почему строго говоря это - не симметричная формула формуле из project? (но лишь приближение)
+
+    double r = std::sqrt(x * x + y * y);
+    x /= 1 + k1_ * r * r + k2_ * r * r * r * r;
+    y /= 1 + k1_ * r * r + k2_ * r * r * r * r;
 
     x /= f_;
     y /= f_;
