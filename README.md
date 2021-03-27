@@ -6,3 +6,4 @@
  - [Задание 2](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task02): Сопоставление ключевых точек и подсчет гомографии.
  - [Задание 3](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task03): SFM. Оценка взаимной ориентации и положения камер, построение облака точек.
  - [Задание 4](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task04): SFM. Ceres Solver и Bundle Adjustment.
+ - [Задание 5](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task05): Depth Maps. Patch Match.
