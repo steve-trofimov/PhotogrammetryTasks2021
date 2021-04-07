@@ -109,7 +109,7 @@ Dataset loadDataset()
 
     dataset.cameras_depth_max.resize(dataset.ncameras);
     dataset.cameras_depth_min.resize(dataset.ncameras);
-    #pragma omp parallel for schedule(dynamic, 1)
+//    #pragma omp parallel for schedule(dynamic, 1)
     for (ptrdiff_t ci = 0; ci < dataset.ncameras; ++ci) {
         double depth_min = std::numeric_limits<double>::max();
         double depth_max = 0.0;

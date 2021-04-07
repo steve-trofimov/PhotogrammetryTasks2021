@@ -47,14 +47,14 @@ namespace phg {
         return pixel_with_depth;
     }
 
-    // TODO 101 реализуйте unproject (вам поможет тест на идемпотентность project -> unproject в test_depth_maps_pm)
+
     vector3d unproject(const vector3d &pixel, const phg::Calibration &calibration, const matrix34d &PtoWorld)
     {
-        double depth = pixel[2]; // на самом деле это не глубина, это координата по оси +Z (вдоль которой смотрит камера в ее локальной системе координат)
+        double depth = pixel[2];
 
-        vector3d local_point; // TODO 102 пустите луч pixel из calibration а затем возьмите ан нем точку у которой по оси +Z координата=depth
+        vector3d local_point = calibration.unproject({pixel[0], pixel[1]}) * depth;
 
-        vector3d global_point; // TODO 103 переведите точку из локальной системы в глобальную
+        vector3d global_point = PtoWorld * homogenize(local_point);
 
         return global_point;
     }
@@ -116,16 +116,15 @@ namespace phg {
                     n0 = normal_map.at<vector3f>(j, i);
 
                     // 2) случайной пертурбации текущей гипотезы (мутация и уточнение того что уже смогли найти)
-                    dp = r.nextf(d0 * 0.5f, d0 * 1.5); // TODO 104: сделайте так чтобы отклонение было тем меньше, чем номер итерации ближе к NITERATIONS, улучшило ли это результат?
-                    np = cv::normalize(n0 + randomNormalObservedFromCamera(cameras_RtoWorld[ref_cam], r) * 0.5); // TODO 105: сделайте так чтобы отклонение было тем меньше, чем номер итерации ближе к NITERATIONS, улучшило ли это результат?
+                    float deviation = (iter - 1) / (2 * (NITERATIONS - 1));
+                    dp = r.nextf(d0 * (0.5 + deviation), d0 * (1.5 - deviation));
+                    np = cv::normalize(n0 + randomNormalObservedFromCamera(cameras_RtoWorld[ref_cam], r) * (0.5 - deviation));
 
                     dp = std::max(ref_depth_min, std::min(ref_depth_max, dp));
 
                     // 3) новой случайной гипотезы из фрустума поиска (новые идеи, вечный поиск во всем пространстве)
-                    // TODO 106: создайте случайную гипотезу dr+nr, вам поможет:
-                    //  - r.nextf(...)
-                    //  - ref_depth_min, ref_depth_max
-                    //  - randomNormalObservedFromCamera - поможет создать нормаль которая гарантированно смотрит на нас 
+                    dp = r.nextf(ref_depth_min, ref_depth_max);
+                    np = randomNormalObservedFromCamera(cameras_RtoWorld[ref_cam], r);
                 }
 
                 float    best_depth  = d0;
@@ -214,6 +213,7 @@ namespace phg {
             #pragma omp parallel for schedule(dynamic, 1)
             for (ptrdiff_t j = 0; j < height; ++j) {
                 for (ptrdiff_t i = (j + chessboard_pattern_step) % 2; i < width; i += 2) {
+                    std::vector<Hypothesis> hypos;
                     std::vector<float>    hypos_depth;
                     std::vector<vector3f> hypos_normal;
                     std::vector<float>    hypos_cost;
@@ -254,11 +254,11 @@ namespace phg {
                     tryToPropagateDonor(i + 0*PROPAGATION_STEP, j - 1*PROPAGATION_STEP, chessboard_pattern_step, hypos_depth, hypos_normal, hypos_cost);
                     tryToPropagateDonor(i + 1*PROPAGATION_STEP, j + 0*PROPAGATION_STEP, chessboard_pattern_step, hypos_depth, hypos_normal, hypos_cost);
                     tryToPropagateDonor(i + 0*PROPAGATION_STEP, j + 1*PROPAGATION_STEP, chessboard_pattern_step, hypos_depth, hypos_normal, hypos_cost);
-                    
+
                     // TODO 201 переделайте чтобы было как в ACMH:
                     // TODO 202 - паттерн донорства
                     // TODO 203 - логика про "берем 8 лучших по их личной оценке - по их личному cost" и только их примеряем уже на себя для рассчета cost в нашей точке
-                    // TODO 301 - сделайте вместо наивного переноса depth+normal в наш пиксель - логику про "пересекли луч из нашего пикселя с плоскостью которую задает донор-сосед" и оценку cost в нашей точке тогда можно провести для более релевантной точки-пересечения 
+                    // TODO 301 - сделайте вместо наивного переноса depth+normal в наш пиксель - логику про "пересекли луч из нашего пикселя с плоскостью которую задает донор-сосед" и оценку cost в нашей точке тогда можно провести для более релевантной точки-пересечения
 
                     float    best_depth  = depth_map.at<float>(j, i);
                     vector3f best_normal = normal_map.at<vector3f>(j, i);
@@ -266,26 +266,26 @@ namespace phg {
                     if (best_depth == NO_DEPTH) {
                         best_cost = NO_COST;
                     }
-    
+
                     for (size_t hi = 0; hi < hypos_depth.size(); ++hi) {
                         // эту гипотезу мы сейчас рассматриваем как очередного кандидата
                         float    d = hypos_depth[hi];
                         vector3f n = hypos_normal[hi];
-    
+
                         // оцениваем cost для каждого соседа
-                        std::vector<float> costs; 
+                        std::vector<float> costs;
                         for (size_t ni = 0; ni < ncameras; ++ni) {
                             if (ni == ref_cam) continue;
-    
+
                             float costi = estimateCost(i, j, d, n, ni);
                             if (costi == NO_COST) continue;
 
                             costs.push_back(costi);
                         }
-    
+
                         // объединяем cost-ы всех соседей в одну общую оценку качества текущей гипотезы (условно "усредняем")
                         float total_cost = avgCost(costs);
-    
+
                         // WTA (winner takes all)
                         if (total_cost < best_cost) {
                             best_depth  = d;
@@ -293,7 +293,7 @@ namespace phg {
                             best_cost   = total_cost;
                         }
                     }
-    
+
                     depth_map.at<float>(j, i)     = best_depth;
                     normal_map.at<vector3f>(j, i) = best_normal;
                     cost_map.at<float>(j, i)      = best_cost;
@@ -352,6 +352,8 @@ namespace phg {
                 ptrdiff_t v = y;
 
                 // TODO 108: добавьте проверку "попали ли мы в камеру номер neighb_cam?" если не попали - возвращаем NO_COST
+//                if (true)
+//                    return NO_COST;
 
                 float intensity = cameras_imgs_grey[neighb_cam].at<unsigned char>(v, u) / 255.0f;
                 patch1.push_back(intensity);
