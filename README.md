@@ -1,3 +1,7 @@
+<p align="center">
+  <img width="200" src="/phg_logo.png" alt="Photogrammetry course logo">
+</p>
+
 В этом репозитории предложены задания для курса по фотограмметрии в [CSCenter](https://compscicenter.ru/courses/photogrammetry/) и [CSClub](https://compsciclub.ru/courses/photogrammetry/).
 
 Задания:
