@@ -7,4 +7,4 @@
  - [Задание 3](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task03): SFM. Оценка взаимной ориентации и положения камер, построение облака точек.
  - [Задание 4](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task04): SFM. Ceres Solver и Bundle Adjustment.
  - [Задание 5](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task05): Depth Maps. Patch Match.
- - [Задание 6](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task06): Build model via Triangulation Delaunay + Graph Min-Cut
+ - [Задание 6](https://github.com/PhotogrammetryCourse/PhotogrammetryTasks2021/tree/task06): Build model via Triangulation Delaunay + Graph Min-Cut.
