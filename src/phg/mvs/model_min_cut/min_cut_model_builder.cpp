@@ -62,8 +62,7 @@ void MinCutModelBuilder::appendToTriangulation(unsigned int camera_id, const vec
         } else {
             // проверяем насколько ближайшая точка далеко
             vector3d np = from_cgal_point(nearest_vertex->point());
-            // TODO 2001 appendToTriangulation(): реализуйте нормальную проверку объединять ли точку с уже добавленной ранее (с учетом r и MERGE_THRESHOLD_RADIUS_KOEF)
-            to_merge = false;
+            to_merge = r * MERGE_THRESHOLD_RADIUS_KOEF > cv::norm(p, np);
         }
 
         vertex_info_t p_info(camera_id, color);
@@ -186,7 +185,7 @@ namespace {
                                         std::vector<cgal_facet_t> &facets, bool checkFinish=true)
     {
         // выбираем среди предложенных фэйсов (треугольников, т.е. граней ячеек) тот что пересечен нашим лучем идущим из rayFrom в rayTo
-        // а так же обновляем множество фейсов (треугольников) до актуального состояния по ту сторону пересеченного фейса (по ту сторону треугольника через который мы перешагнули) 
+        // а так же обновляем множество фейсов (треугольников) до актуального состояния по ту сторону пересеченного фейса (по ту сторону треугольника через который мы перешагнули)
 
         rassert(facets.size() > 0, 538947914120162);
 
@@ -252,14 +251,14 @@ namespace {
             // https://doc.cgal.org/latest/Triangulation_3/index.html
             // https://doc.cgal.org/latest/TDS_3/index.html
             //
-            // The four vertices of a cell are indexed with 0, 1, 2 and 3 in positive orientation, the positive orientation 
-            // being defined by the orientation of the underlying Euclidean space ℝ3 (see Figure 44.1). 
+            // The four vertices of a cell are indexed with 0, 1, 2 and 3 in positive orientation, the positive orientation
+            // being defined by the orientation of the underlying Euclidean space ℝ3 (see Figure 44.1).
             // The neighbors of a cell are also indexed with 0, 1, 2, 3 in such a way that the neighbor indexed by i is opposite to the vertex with the same index.
             //
             // As in the underlying combinatorial triangulation (see Chapter 3D Triangulation Data Structure), edges ( 1-faces)
-            // and facets ( 2-faces) are not explicitly represented: a facet is given by a cell and an index (the facet i of a 
-            // cell c is the facet of c that is opposite to the vertex with index i) and an edge is given by a cell 
-            // and two indices (the edge (i,j) of a cell c is the edge whose endpoints are the vertices of c with indices i and j). See Figure 45.1. 
+            // and facets ( 2-faces) are not explicitly represented: a facet is given by a cell and an index (the facet i of a
+            // cell c is the facet of c that is opposite to the vertex with index i) and an edge is given by a cell
+            // and two indices (the edge (i,j) of a cell c is the edge whose endpoints are the vertices of c with indices i and j). See Figure 45.1.
             vector3d p0 = from_cgal_point(facet.first->vertex((facet.second + 1) % 4)->point());
             vector3d p1 = from_cgal_point(facet.first->vertex((facet.second + 2) % 4)->point());
             vector3d p2 = from_cgal_point(facet.first->vertex((facet.second + 3) % 4)->point());
@@ -322,7 +321,6 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
     size_t nrays = 0;
     for (auto vi = proxy->triangulation.all_vertices_begin(); vi != proxy->triangulation.all_vertices_end(); ++vi) {
         if (vi->info().camera_ids.size() == 0) {
-            // TODO 2004 подумайте и напишите тут какие вершины бывают без камер вообще? почему мы их пропускаем? что и почему случится если убрать это пропускание?
             continue;
         }
 
@@ -355,7 +353,7 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
                 // добавляем пропускной способности из этой ячейки (из этого тетрагедрончика) к стоку
                 cell_after_point->info().t_capacity += LAMBDA_IN;
             }
-            
+
             // шагаем от точки до камеры выставляя веса на треугольниках (они же ребра в графе) которые пересекаются по мере трассировки луча
             std::vector<cgal_facet_t> cur_facets = facets_around_point0; // это актуальные на данный момент треугольники-кандидаты для пересечения с лучем
 
@@ -403,7 +401,6 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
                     rassert(next_cell == proxy->triangulation.locate(to_cgal_point(camera_center)), 238791248120328); // проверяем это
                     // добавляем пропускной способности из истока к ячейке с камерой (к тетрагедрончику содержащему точку центра камеры)
                     next_cell->info().s_capacity += LAMBDA_IN;
-                    // TODO 2005 изменится ли что-то если сильно увеличить пропускные способности ребер от истока? (т.е. сделать пропускную способность из истока равной бесконечности?)
                 }
             }
             avg_triangles_intersected_per_ray += steps;
@@ -429,12 +426,12 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
         size_t a = ci->info().cell_id;
         for (int i = 0; i < 4; ++i) {
             float capacity = ci->info().facets_capacities[i];
-    
+
             cell_handle_t cj = ci->neighbor(i);
             int j = cj->index(ci);
-    
+
             size_t b = cj->info().cell_id;
-    
+
             float reverseCapacity = cj->info().facets_capacities[j];
 
             if (a < b) {
@@ -482,23 +479,28 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
 
             cv::Vec3i face;
 
-            // TODO 2002 добавьте проверку - не опирается ли треугольник на одну из фиктивных вершин (лежащих на гранях вспомогательного bounding box), можете для этого использовать bb_min и bb_max, или добавьте явный флаг в каждую вершину
-            // иначе говоря сделайте так чтобы такие треугольники не добавлялись в результирующую модель эти большие красные треугольники
+            bool isAdd = true;
+            const double eps = 1e-5;
 
+            int ind[12] = {1, 2, 3,     0, 3, 2,     0, 1, 3,     0, 2, 1};
             for (int v_index = 1; v_index <= 3; ++v_index) {
-                auto vi = ci->vertex((i + v_index) % 4);
+                auto vi = ci->vertex(ind[i * 3 + v_index - 1]);
                 size_t& surface_vertex_id = vi->info().vertex_on_surface_id;
+                for (int j = 0; j < 3; j++) {
+                    if (std::abs(vi->point()[j] - bb_max[j]) < FLT_EPSILON ||
+                        std::abs(vi->point()[j] - bb_min[j]) < FLT_EPSILON) {
+                        isAdd = false;
+                        break;
+                    }
+                }
                 if (surface_vertex_id == VERTEX_NOT_ON_SURFACE_RESULT) {
                     surface_vertex_id = mesh_nvertices++;
                 }
                 face[v_index - 1] = surface_vertex_id;
             }
 
-            // TODO 2003 некоторые треугольники выглядят темными в результирующей модели, проблема уходит если выключить в MeshLab освещение (кнопка желтой лампочка - Light on/off) которое учитывает нормаль, которая строится с учетом порядка вершин треугольника (по часовой стрелке или против)
-            // иначе говоря оказывается что порядок обхода вершин в треугольнике не всегда корректен
-            // подумайте чем это вызывано и поправьте (лучше всего это делать посматривая на картинку 'Figure 44.1' в документации https://doc.cgal.org/latest/Triangulation_3/index.html )
-
-            mesh_faces.push_back(face);
+            if (isAdd)
+                mesh_faces.push_back(face);
         }
     }
 
