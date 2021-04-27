@@ -6,6 +6,8 @@
 #include <phg/utils/point_cloud_export.h>
 #include <phg/mvs/depth_maps/pm_geometry.h>
 
+#include <limits>
+
 #include "min_cut_cgal_structs.h"
 #include "min_cut_defines.h"
 #include "min_cut_max_flow_solver.h"
@@ -47,7 +49,7 @@ void MinCutModelBuilder::appendToTriangulation(unsigned int camera_id, const vec
     timer nn_search_t;
     for (ptrdiff_t i = 0; i < points.size(); ++i) {
         vector3d p = points[i];
-        double r = radiuses[i];
+        double radius = radiuses[i];
         cv::Vec3b color = colors[i];
         vector3d normal = normals[i];
 
@@ -62,11 +64,22 @@ void MinCutModelBuilder::appendToTriangulation(unsigned int camera_id, const vec
         } else {
             // проверяем насколько ближайшая точка далеко
             vector3d np = from_cgal_point(nearest_vertex->point());
-            to_merge = r * MERGE_THRESHOLD_RADIUS_KOEF > cv::norm(p, np);
+            to_merge = radius * MERGE_THRESHOLD_RADIUS_KOEF > cv::norm(p, np);
         }
 
-        vertex_info_t p_info(camera_id, color);
+        vertex_info_t p_info(camera_id, color, radius);
         if (to_merge) {
+            // Vertex -> Mean Coordinate
+            int near = nearest_vertex->info().camera_ids.size();
+            vector3d nearPoint = from_cgal_point(nearest_vertex->point()),
+                    meanPoint = (p + nearPoint * near) / (1 + near);
+            proxy->triangulation.move(nearest_vertex, to_cgal_point(meanPoint));
+            // Color -> mean Color
+            cv::Vec3b nearColor = nearest_vertex->info().color;
+            nearest_vertex->info().color = (color + nearColor * near) / (1 + near);
+            // Radius -> mean Radius
+            nearest_vertex->info().radius = (radius + near * nearest_vertex->info().radius) / (1 + near);
+            // Merge
             nearest_vertex->info().merge(p_info);
         } else {
             points_to_insert.push_back(std::make_pair(to_cgal_point(p), p_info));
@@ -90,7 +103,7 @@ void MinCutModelBuilder::appendToTriangulation(unsigned int camera_id, const vec
 void MinCutModelBuilder::printAppendStats()
 {
     std::cout << "MinCutModelBuilder.append: " << append_total_points << " points processed (merged to " << to_percent(append_inserted_points, append_total_points) << "%) totally in "
-    << append_total_t << " s = " << to_percent(append_nn_search_total_t, append_total_t) << "% localization + " << to_percent(append_triangulation_insert_total_t, append_total_t) << "% insertion" << std::endl;
+              << append_total_t << " s = " << to_percent(append_nn_search_total_t, append_total_t) << "% localization + " << to_percent(append_triangulation_insert_total_t, append_total_t) << "% insertion" << std::endl;
 }
 
 namespace {
@@ -336,7 +349,7 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
             const vector3d ray_from_camera = cv::normalize(point0 - camera_center);
             const vector3d ray_to_camera = cv::normalize(camera_center - point0);
             const double distance_to_camera = phg::norm(camera_center - point0);
-
+            const double radius = vi->info().radius;
             {
                 // хотим найти ячейку триангуляции лежащую внутри поверхности (т.е. сразу за этим лучем видимости camera_center->point0):
                 // давайте посмотрим на вершину, затем на все смежные с ней ячейки (тетрагедрончики), а затем возьмем все треугольники-границы этих ячеек (facets_around_point0),
@@ -345,13 +358,28 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
                 // и теперь среди этих треугольников мы ищем тот что пересекается лучем идущим глубже за точку на поверхности
                 // этот треугольник - это грань искомой ячейки триангуляции внутри поверхности
                 std::vector<cgal_facet_t> cur_facets = facets_around_point0;
-                const cgal_facet_t intersected_facet = chooseIntersectedFacet(proxy->triangulation, point0, point0 + ray_from_camera, cur_facets, false);
-                rassert(intersected_facet != cgal_facet_t(), 2378213120305);
 
-                // это ячейка триангуляции лежащая под поверхностью (т.е. сразу за вершиной)
-                const cell_handle_t cell_after_point = intersected_facet.first;
-                // добавляем пропускной способности из этой ячейки (из этого тетрагедрончика) к стоку
-                cell_after_point->info().t_capacity += LAMBDA_IN;
+                // Углубляем сток
+                double prev_distance = 0.0;
+                size_t steps = 0;
+                double max_depth = 2 * vi->info().radius;
+                while (cur_facets.size() > 0 && prev_distance < max_depth) {
+                    const cgal_facet_t intersected_facet = chooseIntersectedFacet(proxy->triangulation, point0, camera_center, cur_facets, false);
+                    rassert(intersected_facet != cgal_facet_t(), 2378213125432);
+                    steps++;
+                    const cell_handle_t nextCell = intersected_facet.first;
+
+                    plane_t facet_plane(intersected_facet);
+                    double distance_from_surface = facet_plane.distanceToIntersection(point0, ray_to_camera);
+                    if (distance_from_surface < 0.0)
+                        distance_from_surface = prev_distance;
+                    prev_distance = distance_from_surface;
+
+                    if (cur_facets.size() == 0 || prev_distance >= max_depth)
+                        nextCell->info().t_capacity += LAMBDA_IN;
+                    else
+                        nextCell->info().facets_capacities[intersected_facet.second] += LAMBDA_OUT * (1. - std::exp(- distance_from_surface / vi->info().radius));
+                }
             }
 
             // шагаем от точки до камеры выставляя веса на треугольниках (они же ребра в графе) которые пересекаются по мере трассировки луча
@@ -394,13 +422,14 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
                 prev_distance = distance_from_surface;
 
                 // увеличиваем пропускную способность на треугольнике-ребре (в направлении от камеры к точке)
-                next_cell->info().facets_capacities[next_cell_facet_subindex] += LAMBDA_OUT;
+                // Добавим затухание к пропускным способностям
+                next_cell->info().facets_capacities[next_cell_facet_subindex] += LAMBDA_OUT * (1. - std::exp(- distance_from_surface / vi->info().radius));
 
                 if (cur_facets.size() == 0) {
                     // если на будущее у нас нет кандидатов-треугольников, значит мы закончили наш путь и следующая ячейка содержит нашу камеру
                     rassert(next_cell == proxy->triangulation.locate(to_cgal_point(camera_center)), 238791248120328); // проверяем это
                     // добавляем пропускной способности из истока к ячейке с камерой (к тетрагедрончику содержащему точку центра камеры)
-                    next_cell->info().s_capacity += LAMBDA_IN;
+                    next_cell->info().s_capacity = std::numeric_limits<float>::max();
                 }
             }
             avg_triangles_intersected_per_ray += steps;
@@ -480,7 +509,6 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i> &mesh_faces, std::vect
             cv::Vec3i face;
 
             bool isAdd = true;
-            const double eps = 1e-5;
 
             int ind[12] = {1, 2, 3,     0, 3, 2,     0, 1, 3,     0, 2, 1};
             for (int v_index = 1; v_index <= 3; ++v_index) {
